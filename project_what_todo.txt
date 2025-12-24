@@ -1,0 +1,500 @@
+Great choice! Let me guide you through creating a GitHub MCP server using Python.
+
+## Step 1: Project Structure
+
+First, create your project structure:
+
+```
+github-mcp/
+├── src/
+│   └── github_mcp/
+│       ├── __init__.py
+│       └── server.py
+├── pyproject.toml
+├── README.md
+└── .gitignore
+```
+
+## Step 2: Set Up Dependencies
+
+Create `pyproject.toml`:
+
+```toml
+[project]
+name = "github-mcp"
+version = "0.1.0"
+description = "GitHub MCP server for Claude"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=0.9.0",
+    "pygithub>=2.1.1",
+    "python-dotenv>=1.0.0"
+]
+
+[project.scripts]
+github-mcp = "github_mcp.server:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+```
+
+## Step 3: Create the MCP Server
+
+Create `src/github_mcp/server.py`:
+
+```python
+import os
+import json
+from typing import Any
+from mcp.server.models import InitializationOptions
+import mcp.types as types
+from mcp.server import NotificationOptions, Server
+import mcp.server.stdio
+from github import Github, GithubException
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Initialize GitHub client
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+if not GITHUB_TOKEN:
+    raise ValueError("GITHUB_TOKEN environment variable is required")
+
+github_client = Github(GITHUB_TOKEN)
+
+# Create MCP server
+server = Server("github-mcp")
+
+@server.list_tools()
+async def handle_list_tools() -> list[types.Tool]:
+    """List available GitHub tools."""
+    return [
+        types.Tool(
+            name="search_repositories",
+            description="Search for GitHub repositories",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query (e.g., 'language:python stars:>1000')"
+                    },
+                    "sort": {
+                        "type": "string",
+                        "description": "Sort by: stars, forks, updated",
+                        "enum": ["stars", "forks", "updated"]
+                    },
+                    "limit": {
+                        "type": "number",
+                        "description": "Number of results (max 100)",
+                        "default": 10
+                    }
+                },
+                "required": ["query"]
+            }
+        ),
+        types.Tool(
+            name="get_repository_info",
+            description="Get detailed information about a repository",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner (username or organization)"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    }
+                },
+                "required": ["owner", "repo"]
+            }
+        ),
+        types.Tool(
+            name="get_file_contents",
+            description="Get contents of a file from a repository",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {"type": "string"},
+                    "repo": {"type": "string"},
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the file in the repository"
+                    },
+                    "branch": {
+                        "type": "string",
+                        "description": "Branch name (default: main/master)",
+                        "default": "main"
+                    }
+                },
+                "required": ["owner", "repo", "path"]
+            }
+        ),
+        types.Tool(
+            name="list_issues",
+            description="List issues for a repository",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {"type": "string"},
+                    "repo": {"type": "string"},
+                    "state": {
+                        "type": "string",
+                        "enum": ["open", "closed", "all"],
+                        "default": "open"
+                    },
+                    "limit": {
+                        "type": "number",
+                        "default": 10
+                    }
+                },
+                "required": ["owner", "repo"]
+            }
+        ),
+        types.Tool(
+            name="get_user_info",
+            description="Get information about a GitHub user",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "username": {
+                        "type": "string",
+                        "description": "GitHub username"
+                    }
+                },
+                "required": ["username"]
+            }
+        ),
+        types.Tool(
+            name="list_pull_requests",
+            description="List pull requests for a repository",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {"type": "string"},
+                    "repo": {"type": "string"},
+                    "state": {
+                        "type": "string",
+                        "enum": ["open", "closed", "all"],
+                        "default": "open"
+                    },
+                    "limit": {
+                        "type": "number",
+                        "default": 10
+                    }
+                },
+                "required": ["owner", "repo"]
+            }
+        )
+    ]
+
+@server.call_tool()
+async def handle_call_tool(
+    name: str, arguments: dict | None
+) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+    """Handle tool execution requests."""
+    
+    try:
+        if name == "search_repositories":
+            query = arguments.get("query")
+            sort = arguments.get("sort", "stars")
+            limit = min(arguments.get("limit", 10), 100)
+            
+            repos = github_client.search_repositories(query=query, sort=sort)
+            results = []
+            
+            for repo in repos[:limit]:
+                results.append({
+                    "name": repo.full_name,
+                    "description": repo.description,
+                    "stars": repo.stargazers_count,
+                    "forks": repo.forks_count,
+                    "language": repo.language,
+                    "url": repo.html_url,
+                    "updated_at": repo.updated_at.isoformat()
+                })
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(results, indent=2)
+            )]
+        
+        elif name == "get_repository_info":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            
+            info = {
+                "name": repo.full_name,
+                "description": repo.description,
+                "stars": repo.stargazers_count,
+                "forks": repo.forks_count,
+                "watchers": repo.watchers_count,
+                "language": repo.language,
+                "open_issues": repo.open_issues_count,
+                "default_branch": repo.default_branch,
+                "created_at": repo.created_at.isoformat(),
+                "updated_at": repo.updated_at.isoformat(),
+                "homepage": repo.homepage,
+                "topics": repo.get_topics(),
+                "license": repo.license.name if repo.license else None,
+                "url": repo.html_url
+            }
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(info, indent=2)
+            )]
+        
+        elif name == "get_file_contents":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            path = arguments.get("path")
+            branch = arguments.get("branch", "main")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            
+            try:
+                file_content = repo.get_contents(path, ref=branch)
+                content = file_content.decoded_content.decode('utf-8')
+                
+                return [types.TextContent(
+                    type="text",
+                    text=content
+                )]
+            except GithubException:
+                # Try master branch if main doesn't exist
+                file_content = repo.get_contents(path, ref="master")
+                content = file_content.decoded_content.decode('utf-8')
+                
+                return [types.TextContent(
+                    type="text",
+                    text=content
+                )]
+        
+        elif name == "list_issues":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            state = arguments.get("state", "open")
+            limit = min(arguments.get("limit", 10), 100)
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            issues = repo.get_issues(state=state)
+            
+            results = []
+            for issue in issues[:limit]:
+                if not issue.pull_request:  # Exclude PRs
+                    results.append({
+                        "number": issue.number,
+                        "title": issue.title,
+                        "state": issue.state,
+                        "created_at": issue.created_at.isoformat(),
+                        "updated_at": issue.updated_at.isoformat(),
+                        "user": issue.user.login,
+                        "labels": [label.name for label in issue.labels],
+                        "comments": issue.comments,
+                        "url": issue.html_url
+                    })
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(results, indent=2)
+            )]
+        
+        elif name == "get_user_info":
+            username = arguments.get("username")
+            user = github_client.get_user(username)
+            
+            info = {
+                "login": user.login,
+                "name": user.name,
+                "bio": user.bio,
+                "company": user.company,
+                "location": user.location,
+                "email": user.email,
+                "public_repos": user.public_repos,
+                "followers": user.followers,
+                "following": user.following,
+                "created_at": user.created_at.isoformat(),
+                "url": user.html_url
+            }
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(info, indent=2)
+            )]
+        
+        elif name == "list_pull_requests":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            state = arguments.get("state", "open")
+            limit = min(arguments.get("limit", 10), 100)
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            prs = repo.get_pulls(state=state)
+            
+            results = []
+            for pr in prs[:limit]:
+                results.append({
+                    "number": pr.number,
+                    "title": pr.title,
+                    "state": pr.state,
+                    "created_at": pr.created_at.isoformat(),
+                    "updated_at": pr.updated_at.isoformat(),
+                    "user": pr.user.login,
+                    "merged": pr.merged,
+                    "url": pr.html_url
+                })
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(results, indent=2)
+            )]
+        
+        else:
+            raise ValueError(f"Unknown tool: {name}")
+            
+    except GithubException as e:
+        return [types.TextContent(
+            type="text",
+            text=f"GitHub API Error: {str(e)}"
+        )]
+    except Exception as e:
+        return [types.TextContent(
+            type="text",
+            text=f"Error: {str(e)}"
+        )]
+
+async def main():
+    # Run the server using stdin/stdout streams
+    async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
+        await server.run(
+            read_stream,
+            write_stream,
+            InitializationOptions(
+                server_name="github-mcp",
+                server_version="0.1.0",
+                capabilities=server.get_capabilities(
+                    notification_options=NotificationOptions(),
+                    experimental_capabilities={},
+                ),
+            ),
+        )
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
+```
+
+## Step 4: Create Supporting Files
+
+Create `.gitignore`:
+```
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+```
+
+Create `README.md`:
+```markdown
+# GitHub MCP Server
+
+A Model Context Protocol (MCP) server for GitHub integration.
+
+## Features
+
+- Search repositories
+- Get repository information
+- Read file contents
+- List issues and pull requests
+- Get user information
+
+## Setup
+
+1. Install dependencies:
+```bash
+pip install -e .
+```
+
+2. Create a `.env` file with your GitHub token:
+```
+GITHUB_TOKEN=your_github_personal_access_token
+```
+
+3. Get a GitHub token from: https://github.com/settings/tokens
+
+## Usage with Claude Desktop
+
+Add to your Claude Desktop config:
+
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "python",
+      "args": ["-m", "github_mcp.server"],
+      "env": {
+        "GITHUB_TOKEN": "your_token_here"
+      }
+    }
+  }
+}
+```
+
+## Available Tools
+
+- `search_repositories` - Search for repositories
+- `get_repository_info` - Get repo details
+- `get_file_contents` - Read file contents
+- `list_issues` - List repository issues
+- `list_pull_requests` - List pull requests
+- `get_user_info` - Get user information
+```
+
+## Step 5: Install and Test
+
+```bash
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install in development mode
+pip install -e .
+
+# Create .env file
+echo "GITHUB_TOKEN=your_token_here" > .env
+
+# Test run
+python -m github_mcp.server
+```
+
+## Step 6: Push to GitHub
+
+```bash
+git init
+git add .
+git commit -m "Initial commit: GitHub MCP server"
+git remote add origin https://github.com/yourusername/github-mcp.git
+git push -u origin main
+```
+
+This gives you a solid foundation! You can extend it with more features like:
+- Creating issues/PRs
+- Repository statistics
+- Commit history
+- Branch management
+- Gist operations
+
+Would you like me to help you add any specific features?
