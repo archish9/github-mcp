@@ -22,11 +22,21 @@ load_dotenv(PROJECT_ROOT / ".env")
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
+# Build environment with PYTHONPATH for package discovery
+def get_server_env():
+    env = dict(os.environ)
+    src_path = str(PROJECT_ROOT / "src")
+    if "PYTHONPATH" in env:
+        env["PYTHONPATH"] = src_path + os.pathsep + env["PYTHONPATH"]
+    else:
+        env["PYTHONPATH"] = src_path
+    return env
+
 # Server configuration - works on Windows, Linux, and Mac
 SERVER_PARAMS = StdioServerParameters(
     command=sys.executable,  # Use same Python as this script (important for venv!)
     args=["-m", "github_mcp.server"],
-    env=dict(os.environ),  # Inherit environment variables (now includes .env)
+    env=get_server_env(),  # Inherit environment variables with PYTHONPATH
     cwd=str(PROJECT_ROOT)  # Set working directory so .env is found
 )
 
