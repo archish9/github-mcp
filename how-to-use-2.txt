@@ -1,0 +1,957 @@
+Excellent question! Using GitHub MCP in agentic/RAG frameworks like LangChain or LlamaIndex opens up powerful possibilities. Let me explain in detail.
+
+---
+
+## 🎯 Applications in LangChain/LlamaIndex
+
+### **1. Code Q&A System with Live GitHub Context**
+```
+Application: AI assistant that answers questions about your codebase
+
+How it works:
+1. User asks: "How does our authentication system work?"
+2. RAG retrieves relevant docs from vector store
+3. MCP fetches actual auth code from GitHub
+4. Agent combines documentation + live code
+5. Provides accurate, up-to-date answer
+
+Value: Always uses latest code, not outdated documentation
+```
+
+### **2. Automated Code Documentation Generator**
+```
+Application: Generate and maintain documentation automatically
+
+Workflow:
+1. LlamaIndex indexes your documentation
+2. MCP monitors GitHub commits
+3. When code changes, agent detects outdated docs
+4. Retrieves changed files via MCP
+5. Updates documentation
+6. Creates PR with doc changes
+
+Value: Documentation stays in sync with code
+```
+
+### **3. Intelligent Code Review Agent**
+```
+Application: AI-powered code review assistant
+
+Process:
+1. GitHub webhook triggers on new PR
+2. LangChain agent activates
+3. MCP fetches PR diff and files
+4. RAG retrieves coding standards from knowledge base
+5. Agent analyzes code quality
+6. MCP posts review comments
+7. Suggests improvements
+
+Value: Consistent, instant code reviews
+```
+
+### **4. Issue Triage and Routing System**
+```
+Application: Automatically categorize and assign issues
+
+Flow:
+1. New issue created on GitHub
+2. MCP fetches issue details
+3. RAG searches similar past issues
+4. Agent analyzes issue content
+5. Classifies (bug/feature/question)
+6. MCP assigns to appropriate developer
+7. Adds relevant labels
+
+Value: Saves time, improves response time
+```
+
+### **5. Semantic Code Search**
+```
+Application: Search codebase by meaning, not just keywords
+
+Example:
+User: "Find code that handles payment processing errors"
+
+Process:
+1. LlamaIndex has embeddings of all code
+2. Semantic search finds relevant files
+3. MCP fetches actual file contents
+4. Agent analyzes and explains the code
+5. Shows related commits and issues
+
+Value: Find code even without knowing exact terms
+```
+
+### **6. Automated Release Notes Generator**
+```
+Application: Generate human-readable release notes
+
+Workflow:
+1. Agent queries: "What changed since last release?"
+2. MCP fetches commits between tags
+3. RAG retrieves context about features
+4. Agent categorizes changes
+5. Generates changelog in natural language
+6. MCP creates release with notes
+
+Value: Professional release notes in seconds
+```
+
+### **7. Dependency Update Assistant**
+```
+Application: Intelligent dependency management
+
+Process:
+1. Monitor package.json or requirements.txt
+2. MCP detects outdated dependencies
+3. RAG searches for breaking changes
+4. Agent analyzes impact on codebase
+5. MCP creates branch with updates
+6. Runs tests and creates PR
+
+Value: Safe, informed dependency updates
+```
+
+### **8. Codebase Knowledge Assistant**
+```
+Application: Onboarding assistant for new developers
+
+Features:
+- "Where is the user authentication code?"
+- "Show me examples of API endpoint creation"
+- "What testing patterns do we use?"
+- "Who should I ask about the payment system?"
+
+Uses:
+- RAG for historical context
+- MCP for current code
+- Agent for intelligent responses
+
+Value: Faster onboarding, reduced questions
+```
+
+---
+
+## 🔧 How to Use GitHub MCP in LangChain
+
+### **Method 1: As a LangChain Tool**
+
+```python
+from langchain.agents import initialize_agent, Tool
+from langchain.chat_models import ChatAnthropic
+from langchain.memory import ConversationBufferMemory
+import asyncio
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+
+# Create MCP client wrapper
+class GitHubMCPClient:
+    def __init__(self):
+        self.server_params = StdioServerParameters(
+            command="python",
+            args=["-m", "github_mcp.server"],
+            env=None
+        )
+    
+    async def search_repos(self, query: str):
+        """Search GitHub repositories"""
+        async with stdio_client(self.server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool(
+                    "search_repositories",
+                    arguments={"query": query, "limit": 5}
+                )
+                return result.content[0].text
+    
+    async def get_file(self, owner: str, repo: str, path: str):
+        """Get file contents from repository"""
+        async with stdio_client(self.server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool(
+                    "get_file_contents",
+                    arguments={"owner": owner, "repo": repo, "path": path}
+                )
+                return result.content[0].text
+    
+    async def create_issue(self, owner: str, repo: str, title: str, body: str):
+        """Create a GitHub issue"""
+        async with stdio_client(self.server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool(
+                    "create_issue",
+                    arguments={
+                        "owner": owner,
+                        "repo": repo,
+                        "title": title,
+                        "body": body
+                    }
+                )
+                return result.content[0].text
+
+# Initialize MCP client
+github_client = GitHubMCPClient()
+
+# Create LangChain tools
+def search_repositories_sync(query: str) -> str:
+    """Search GitHub repositories"""
+    return asyncio.run(github_client.search_repos(query))
+
+def get_file_contents_sync(input_str: str) -> str:
+    """Get file contents. Input: 'owner/repo/path'"""
+    parts = input_str.split('/')
+    owner, repo, path = parts[0], parts[1], '/'.join(parts[2:])
+    return asyncio.run(github_client.get_file(owner, repo, path))
+
+def create_github_issue_sync(input_str: str) -> str:
+    """Create GitHub issue. Input: 'owner/repo|title|body'"""
+    parts = input_str.split('|')
+    owner_repo, title, body = parts[0], parts[1], parts[2]
+    owner, repo = owner_repo.split('/')
+    return asyncio.run(github_client.create_issue(owner, repo, title, body))
+
+# Define tools for LangChain
+tools = [
+    Tool(
+        name="search_github_repos",
+        func=search_repositories_sync,
+        description="Search GitHub repositories. Input: search query like 'language:python stars:>1000'"
+    ),
+    Tool(
+        name="get_github_file",
+        func=get_file_contents_sync,
+        description="Get file contents from GitHub. Input: 'owner/repo/path/to/file.py'"
+    ),
+    Tool(
+        name="create_github_issue",
+        func=create_github_issue_sync,
+        description="Create a GitHub issue. Input: 'owner/repo|Issue Title|Issue body description'"
+    )
+]
+
+# Initialize LangChain agent
+llm = ChatAnthropic(model="claude-3-5-sonnet-20241022")
+memory = ConversationBufferMemory(memory_key="chat_history")
+
+agent = initialize_agent(
+    tools=tools,
+    llm=llm,
+    agent="conversational-react-description",
+    memory=memory,
+    verbose=True
+)
+
+# Use the agent
+response = agent.run(
+    "Find popular Python web frameworks on GitHub, "
+    "then get the README from the most starred one"
+)
+print(response)
+```
+
+---
+
+### **Method 2: LangChain + RAG Pattern**
+
+```python
+from langchain.embeddings import OpenAIEmbeddings
+from langchain.vectorstores import Chroma
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.chains import RetrievalQA
+from langchain.chat_models import ChatAnthropic
+
+# Step 1: Index your codebase using MCP
+async def index_repository(owner: str, repo: str):
+    """Index entire repository into vector store"""
+    
+    github_client = GitHubMCPClient()
+    
+    # Get repository tree (all files)
+    async with stdio_client(github_client.server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            
+            # Get all Python files
+            result = await session.call_tool(
+                "list_repository_files",
+                arguments={"owner": owner, "repo": repo, "extension": ".py"}
+            )
+            
+            files = json.loads(result.content[0].text)
+            
+            # Fetch content of each file
+            documents = []
+            for file_path in files:
+                content = await github_client.get_file(owner, repo, file_path)
+                
+                # Create document with metadata
+                documents.append({
+                    "content": content,
+                    "metadata": {
+                        "source": f"{owner}/{repo}/{file_path}",
+                        "file_path": file_path,
+                        "repo": f"{owner}/{repo}"
+                    }
+                })
+    
+    # Split documents
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200
+    )
+    
+    texts = []
+    metadatas = []
+    for doc in documents:
+        chunks = text_splitter.split_text(doc["content"])
+        texts.extend(chunks)
+        metadatas.extend([doc["metadata"]] * len(chunks))
+    
+    # Create vector store
+    embeddings = OpenAIEmbeddings()
+    vectorstore = Chroma.from_texts(
+        texts=texts,
+        metadatas=metadatas,
+        embedding=embeddings,
+        persist_directory="./chroma_db"
+    )
+    
+    return vectorstore
+
+# Step 2: Create RAG chain with live GitHub access
+class CodebaseRAG:
+    def __init__(self, vectorstore):
+        self.vectorstore = vectorstore
+        self.github_client = GitHubMCPClient()
+        self.llm = ChatAnthropic(model="claude-3-5-sonnet-20241022")
+        
+        self.qa_chain = RetrievalQA.from_chain_type(
+            llm=self.llm,
+            chain_type="stuff",
+            retriever=vectorstore.as_retriever(search_kwargs={"k": 5})
+        )
+    
+    async def answer_with_context(self, question: str):
+        """Answer question using RAG + live GitHub data"""
+        
+        # First, use RAG to find relevant context
+        rag_response = self.qa_chain.run(question)
+        
+        # Extract file references from RAG response
+        # If question needs live data, fetch from GitHub
+        if "latest" in question.lower() or "current" in question.lower():
+            # Get live data from GitHub
+            result = await self.github_client.search_repos(
+                "repo:owner/repo " + question
+            )
+            
+            # Combine RAG + live data
+            final_response = f"""
+Based on indexed code: {rag_response}
+
+Latest from GitHub: {result}
+            """
+            return final_response
+        
+        return rag_response
+
+# Usage
+vectorstore = asyncio.run(index_repository("facebook", "react"))
+rag_system = CodebaseRAG(vectorstore)
+
+response = asyncio.run(rag_system.answer_with_context(
+    "How does React handle component lifecycle?"
+))
+print(response)
+```
+
+---
+
+## 🔧 How to Use GitHub MCP in LlamaIndex
+
+### **Method 1: Custom Tool Integration**
+
+```python
+from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
+from llama_index.core.tools import FunctionTool
+from llama_index.agent import OpenAIAgent
+from llama_index.llms import Claude
+import asyncio
+
+# Create MCP tools for LlamaIndex
+github_client = GitHubMCPClient()
+
+def search_github_tool(query: str) -> str:
+    """Search GitHub repositories"""
+    return asyncio.run(github_client.search_repos(query))
+
+def get_file_tool(owner: str, repo: str, path: str) -> str:
+    """Get file contents from GitHub repository"""
+    return asyncio.run(github_client.get_file(owner, repo, path))
+
+def analyze_repo_tool(owner: str, repo: str) -> str:
+    """Get comprehensive repository information"""
+    result = asyncio.run(github_client.get_repo_info(owner, repo))
+    return result
+
+# Convert to LlamaIndex tools
+github_search = FunctionTool.from_defaults(
+    fn=search_github_tool,
+    name="github_search",
+    description="Search GitHub repositories by query"
+)
+
+github_get_file = FunctionTool.from_defaults(
+    fn=get_file_tool,
+    name="github_get_file",
+    description="Retrieve file contents from a GitHub repository"
+)
+
+github_analyze = FunctionTool.from_defaults(
+    fn=analyze_repo_tool,
+    name="github_analyze_repo",
+    description="Get detailed information about a GitHub repository"
+)
+
+# Create agent with GitHub tools
+llm = Claude(model="claude-3-5-sonnet-20241022")
+
+agent = OpenAIAgent.from_tools(
+    tools=[github_search, github_get_file, github_analyze],
+    llm=llm,
+    verbose=True
+)
+
+# Use the agent
+response = agent.chat(
+    "Find the most popular Python testing framework on GitHub, "
+    "then show me an example test file from their repository"
+)
+print(response)
+```
+
+### **Method 2: LlamaIndex RAG + GitHub MCP**
+
+```python
+from llama_index.core import Document, VectorStoreIndex, StorageContext
+from llama_index.core.node_parser import SimpleNodeParser
+from llama_index.vector_stores import ChromaVectorStore
+from llama_index.embeddings import OpenAIEmbedding
+import chromadb
+
+class GitHubRAGSystem:
+    def __init__(self):
+        self.github_client = GitHubMCPClient()
+        self.embed_model = OpenAIEmbedding()
+        
+        # Initialize ChromaDB
+        chroma_client = chromadb.PersistentClient(path="./chroma_db")
+        chroma_collection = chroma_client.get_or_create_collection("github_code")
+        
+        self.vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
+        self.storage_context = StorageContext.from_defaults(
+            vector_store=self.vector_store
+        )
+    
+    async def index_repository(self, owner: str, repo: str):
+        """Index entire repository into LlamaIndex"""
+        
+        # Fetch repository structure
+        async with stdio_client(self.github_client.server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                
+                # Get all files
+                result = await session.call_tool(
+                    "list_repository_files",
+                    arguments={"owner": owner, "repo": repo}
+                )
+                
+                files = json.loads(result.content[0].text)
+                
+                # Create documents
+                documents = []
+                for file_path in files:
+                    if file_path.endswith(('.py', '.js', '.java', '.md')):
+                        content = await self.github_client.get_file(
+                            owner, repo, file_path
+                        )
+                        
+                        doc = Document(
+                            text=content,
+                            metadata={
+                                "file_path": file_path,
+                                "repo": f"{owner}/{repo}",
+                                "owner": owner,
+                                "repo_name": repo
+                            }
+                        )
+                        documents.append(doc)
+        
+        # Parse and index
+        parser = SimpleNodeParser.from_defaults(chunk_size=1024)
+        nodes = parser.get_nodes_from_documents(documents)
+        
+        self.index = VectorStoreIndex(
+            nodes,
+            storage_context=self.storage_context,
+            embed_model=self.embed_model
+        )
+        
+        return self.index
+    
+    async def query_with_github_context(self, query: str, owner: str, repo: str):
+        """Query using RAG + live GitHub data"""
+        
+        # Query the index
+        query_engine = self.index.as_query_engine(similarity_top_k=5)
+        response = query_engine.query(query)
+        
+        # Enhance with live GitHub data if needed
+        if "recent" in query.lower() or "latest" in query.lower():
+            # Get recent commits
+            commits = await self.github_client.get_commits(owner, repo, limit=10)
+            
+            enhanced_response = f"""
+Based on indexed code:
+{response}
+
+Recent activity on GitHub:
+{commits}
+            """
+            return enhanced_response
+        
+        return response
+
+# Usage
+rag_system = GitHubRAGSystem()
+
+# Index a repository
+asyncio.run(rag_system.index_repository("django", "django"))
+
+# Query with context
+response = asyncio.run(rag_system.query_with_github_context(
+    "How does Django handle database migrations?",
+    "django",
+    "django"
+))
+print(response)
+```
+
+---
+
+## 💡 Advanced Use Cases
+
+### **1. Multi-Repository Code Search**
+
+```python
+class MultiRepoSearch:
+    """Search across multiple repositories simultaneously"""
+    
+    def __init__(self, repos: list):
+        self.repos = repos  # [("owner1", "repo1"), ("owner2", "repo2")]
+        self.github_client = GitHubMCPClient()
+        self.indexes = {}
+    
+    async def index_all_repos(self):
+        """Index multiple repositories"""
+        for owner, repo in self.repos:
+            rag_system = GitHubRAGSystem()
+            index = await rag_system.index_repository(owner, repo)
+            self.indexes[f"{owner}/{repo}"] = index
+    
+    async def cross_repo_search(self, query: str):
+        """Search across all indexed repositories"""
+        results = {}
+        
+        for repo_name, index in self.indexes.items():
+            query_engine = index.as_query_engine()
+            response = query_engine.query(query)
+            results[repo_name] = response
+        
+        return results
+
+# Usage
+repos = [
+    ("django", "django"),
+    ("flask", "flask"),
+    ("fastapi", "fastapi")
+]
+
+searcher = MultiRepoSearch(repos)
+asyncio.run(searcher.index_all_repos())
+
+results = asyncio.run(searcher.cross_repo_search(
+    "How is authentication implemented?"
+))
+
+for repo, answer in results.items():
+    print(f"\n{repo}:")
+    print(answer)
+```
+
+### **2. Automated Code Review Agent**
+
+```python
+from langchain.agents import AgentExecutor
+from langchain.prompts import ChatPromptTemplate
+
+class CodeReviewAgent:
+    def __init__(self):
+        self.github_client = GitHubMCPClient()
+        self.llm = ChatAnthropic(model="claude-3-5-sonnet-20241022")
+        self.vectorstore = None  # Loaded coding standards
+    
+    async def load_coding_standards(self, owner: str, repo: str):
+        """Load coding standards from CONTRIBUTING.md or similar"""
+        content = await self.github_client.get_file(
+            owner, repo, "CONTRIBUTING.md"
+        )
+        
+        # Index coding standards
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=500)
+        texts = text_splitter.split_text(content)
+        
+        embeddings = OpenAIEmbeddings()
+        self.vectorstore = Chroma.from_texts(texts, embeddings)
+    
+    async def review_pr(self, owner: str, repo: str, pr_number: int):
+        """Review a pull request"""
+        
+        # Get PR details via MCP
+        pr_diff = await self.github_client.get_pr_diff(owner, repo, pr_number)
+        pr_files = await self.github_client.get_pr_files(owner, repo, pr_number)
+        
+        # Retrieve relevant coding standards
+        retriever = self.vectorstore.as_retriever()
+        relevant_standards = retriever.get_relevant_documents(pr_diff)
+        
+        # Create review prompt
+        prompt = ChatPromptTemplate.from_template("""
+You are a code reviewer. Review this pull request:
+
+PR Diff:
+{pr_diff}
+
+Files Changed:
+{files}
+
+Coding Standards:
+{standards}
+
+Provide:
+1. Code quality assessment
+2. Potential bugs or issues
+3. Best practice violations
+4. Suggestions for improvement
+5. Overall recommendation (approve/request changes)
+        """)
+        
+        # Generate review
+        chain = prompt | self.llm
+        review = chain.invoke({
+            "pr_diff": pr_diff,
+            "files": pr_files,
+            "standards": relevant_standards
+        })
+        
+        # Post review comment via MCP
+        await self.github_client.create_pr_review(
+            owner, repo, pr_number,
+            body=review.content,
+            event="COMMENT"
+        )
+        
+        return review
+
+# Usage
+reviewer = CodeReviewAgent()
+asyncio.run(reviewer.load_coding_standards("myorg", "myrepo"))
+review = asyncio.run(reviewer.review_pr("myorg", "myrepo", 123))
+print(review)
+```
+
+### **3. Dependency Update Agent**
+
+```python
+class DependencyUpdateAgent:
+    """Monitors and suggests dependency updates"""
+    
+    def __init__(self):
+        self.github_client = GitHubMCPClient()
+        self.llm = ChatAnthropic(model="claude-3-5-sonnet-20241022")
+    
+    async def check_dependencies(self, owner: str, repo: str):
+        """Check for outdated dependencies"""
+        
+        # Get package.json or requirements.txt
+        try:
+            deps = await self.github_client.get_file(
+                owner, repo, "package.json"
+            )
+            dep_type = "npm"
+        except:
+            deps = await self.github_client.get_file(
+                owner, repo, "requirements.txt"
+            )
+            dep_type = "pip"
+        
+        # Use MCP to search for latest versions
+        # (would need additional MCP tools for package registries)
+        
+        # Analyze impact using RAG
+        # Search codebase for usage of outdated dependencies
+        
+        # Generate update PR
+        prompt = f"""
+Analyze these dependencies and suggest safe updates:
+
+Current dependencies:
+{deps}
+
+Consider:
+1. Breaking changes
+2. Security vulnerabilities
+3. Compatibility with existing code
+4. Testing requirements
+        """
+        
+        analysis = self.llm.invoke(prompt)
+        
+        return analysis
+
+# Usage
+agent = DependencyUpdateAgent()
+analysis = asyncio.run(agent.check_dependencies("myorg", "myrepo"))
+print(analysis)
+```
+
+---
+
+## 🎯 Why This is Powerful in Agentic Frameworks
+
+### **1. Live Data + Historical Context**
+- **RAG**: Historical patterns, documentation
+- **MCP**: Current code, live issues, recent commits
+- **Together**: Complete, up-to-date understanding
+
+### **2. Autonomous Operations**
+```python
+# Agent can:
+- Monitor repository for changes
+- Automatically create issues for bugs
+- Generate and update documentation
+- Review PRs without human intervention
+- Manage releases and deployments
+```
+
+### **3. Semantic Understanding**
+```python
+# Instead of keyword search:
+agent.query("Find error handling patterns")
+
+# Agent understands:
+- try/catch blocks
+- error classes
+- logging patterns
+- recovery mechanisms
+```
+
+### **4. Cross-Repository Intelligence**
+```python
+# Analyze patterns across multiple repos
+agent.analyze([
+    "myorg/service-auth",
+    "myorg/service-payments", 
+    "myorg/service-users"
+])
+
+# Finds:
+- Common patterns
+- Inconsistencies
+- Best practices
+- Shared dependencies
+```
+
+### **5. Proactive Assistance**
+```python
+# Agent monitors continuously
+- "New commit breaks tests" → Creates issue
+- "PR has security issue" → Comments with fix
+- "Documentation outdated" → Updates and creates PR
+- "Dependencies vulnerable" → Suggests updates
+```
+
+---
+
+## 🚀 Complete Example: Production-Ready System
+
+```python
+from langchain.agents import initialize_agent, Tool, AgentType
+from langchain.chat_models import ChatAnthropic
+from langchain.embeddings import OpenAIEmbeddings
+from langchain.vectorstores import Chroma
+from langchain.memory import ConversationBufferMemory
+import schedule
+import time
+
+class ProductionGitHubAgent:
+    """Production-ready GitHub agent with RAG"""
+    
+    def __init__(self, repositories: list):
+        self.repos = repositories
+        self.github_client = GitHubMCPClient()
+        self.llm = ChatAnthropic(model="claude-3-5-sonnet-20241022")
+        self.embeddings = OpenAIEmbeddings()
+        self.memory = ConversationBufferMemory()
+        
+        # Index all repositories
+        self.vectorstores = {}
+        for owner, repo in repositories:
+            self.index_repository(owner, repo)
+        
+        # Setup tools
+        self.tools = self._create_tools()
+        
+        # Initialize agent
+        self.agent = initialize_agent(
+            tools=self.tools,
+            llm=self.llm,
+            agent=AgentType.CONVERSATIONAL_REACT_DESCRIPTION,
+            memory=self.memory,
+            verbose=True
+        )
+    
+    def index_repository(self, owner: str, repo: str):
+        """Index repository into vector store"""
+        # Implementation from previous examples
+        pass
+    
+    def _create_tools(self):
+        """Create all available tools"""
+        return [
+            Tool(
+                name="search_code",
+                func=self.search_code_in_repos,
+                description="Search for code across all indexed repositories"
+            ),
+            Tool(
+                name="create_issue",
+                func=self.create_issue_wrapper,
+                description="Create a GitHub issue"
+            ),
+            Tool(
+                name="review_pr",
+                func=self.review_pr_wrapper,
+                description="Review a pull request"
+            ),
+            Tool(
+                name="analyze_commits",
+                func=self.analyze_commits_wrapper,
+                description="Analyze recent commits for patterns or issues"
+            )
+        ]
+    
+    def search_code_in_repos(self, query: str) -> str:
+        """Search across all indexed repos"""
+        # RAG search implementation
+        pass
+    
+    def create_issue_wrapper(self, input_str: str) -> str:
+        """Create issue via MCP"""
+        # Parse input and call MCP
+        pass
+    
+    def review_pr_wrapper(self, input_str: str) -> str:
+        """Review PR using RAG + MCP"""
+        # Fetch PR, analyze with RAG, post review
+        pass
+    
+    def analyze_commits_wrapper(self, input_str: str) -> str:
+        """Analyze commits using MCP"""
+        # Fetch commits, analyze patterns
+        pass
+    
+    def run_scheduled_tasks(self):
+        """Run periodic maintenance tasks"""
+        schedule.every().day.at("09:00").do(self.daily_health_check)
+        schedule.every().hour.do(self.check_new_prs)
+        schedule.every(30).minutes.do(self.update_indexes)
+        
+        while True:
+            schedule.run_pending()
+            time.sleep(60)
+    
+    def daily_health_check(self):
+        """Daily repository health check"""
+        for owner, repo in self.repos:
+            result = self.agent.run(
+                f"Analyze the health of {owner}/{repo} repository. "
+                f"Check for: stale PRs, old issues, failing tests, "
+                f"security vulnerabilities, and documentation gaps."
+            )
+            print(f"Health check for {owner}/{repo}:\n{result}")
+    
+    def check_new_prs(self):
+        """Check and review new PRs"""
+        for owner, repo in self.repos:
+            # Get new PRs via MCP
+            # Auto-review with agent
+            pass
+    
+    def update_indexes(self):
+        """Update vector stores with latest code"""
+        for owner, repo in self.repos:
+            # Re-index changed files
+            pass
+
+# Usage
+repos = [
+    ("myorg", "backend-api"),
+    ("myorg", "frontend-app"),
+    ("myorg", "mobile-app")
+]
+
+agent_system = ProductionGitHubAgent(repos)
+
+# Interactive use
+response = agent_system.agent.run(
+    "Find all authentication-related code across our repositories "
+    "and check if they follow our security standards"
+)
+
+# Or run as a service
+# agent_system.run_scheduled_tasks()
+```
+
+---
+
+## 🎯 Summary: Why This Matters
+
+### **Traditional Approach:**
+```
+Developer → GitHub Web → Manual Search → Copy Code → Ask Question
+Time: 10-30 minutes per query
+```
+
+### **With GitHub MCP + LangChain/LlamaIndex:**
+```
+Developer → Ask Agent → Agent uses RAG + MCP → Instant Answer
+Time: 30 seconds
+Bonus: Agent learns from interactions
+```
+
+### **Key Benefits:**
+
+1. **Speed**: 20-50x faster than manual searching
+2. **Accuracy**: Always uses latest code + historical context
+3. **Automation**: Can work 24/7 without human intervention
+4. **Intelligence**: Understands context and relationships
+5. **Scalability**: Works across hundreds of repositories
+6. **Learning**: Improves over time with more data
+
+This transforms your GitHub MCP from a **simple API wrapper** into an **intelligent development assistant** that can truly understand, analyze, and improve your codebase!
+
+Would you like me to help you implement any of these specific patterns?

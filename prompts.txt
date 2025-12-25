@@ -1,0 +1,2 @@
+I want to show how to use this MCP , i don't want unit test, i want actual scripts that show how to pass arguments and see response.
+So generate the required scripts
