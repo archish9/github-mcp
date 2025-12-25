@@ -1,11 +1,19 @@
 import os
 import json
+import logging
 from typing import Any
 import mcp.types as types
 from mcp.server import Server
 import mcp.server.stdio
 from github import Github, GithubException
 from dotenv import load_dotenv
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -151,6 +159,266 @@ async def handle_list_tools() -> list[types.Tool]:
                     }
                 },
                 "required": ["owner", "repo"]
+            }
+        ),
+        types.Tool(
+            name="create_issue",
+            description="Create a new issue in a repository",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner (username or organization)"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Issue title"
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Issue body/description"
+                    },
+                    "labels": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of label names to apply"
+                    },
+                    "assignees": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of GitHub usernames to assign"
+                    },
+                    "milestone": {
+                        "type": "number",
+                        "description": "Milestone number (optional)"
+                    }
+                },
+                "required": ["owner", "repo", "title"]
+            }
+        ),
+        types.Tool(
+            name="create_pull_request",
+            description="Create a new pull request",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "PR title"
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "PR description"
+                    },
+                    "head": {
+                        "type": "string",
+                        "description": "Branch containing changes (e.g., 'feature-branch' or 'owner:feature-branch')"
+                    },
+                    "base": {
+                        "type": "string",
+                        "description": "Branch to merge into (default: main/master)",
+                        "default": "main"
+                    },
+                    "draft": {
+                        "type": "boolean",
+                        "description": "Create as draft PR",
+                        "default": False
+                    }
+                },
+                "required": ["owner", "repo", "title", "head"]
+            }
+        ),
+        types.Tool(
+            name="add_issue_comment",
+            description="Add a comment to an issue",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {"type": "string"},
+                    "repo": {"type": "string"},
+                    "issue_number": {
+                        "type": "number",
+                        "description": "Issue number"
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Comment text"
+                    }
+                },
+                "required": ["owner", "repo", "issue_number", "body"]
+            }
+        ),
+        types.Tool(
+            name="add_pr_comment",
+            description="Add a comment to a pull request",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {"type": "string"},
+                    "repo": {"type": "string"},
+                    "pr_number": {
+                        "type": "number",
+                        "description": "Pull request number"
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Comment text"
+                    }
+                },
+                "required": ["owner", "repo", "pr_number", "body"]
+            }
+        ),
+        types.Tool(
+            name="update_issue",
+            description="Update an issue (status, labels, assignees, title, body)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {"type": "string"},
+                    "repo": {"type": "string"},
+                    "issue_number": {
+                        "type": "number",
+                        "description": "Issue number"
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "New title (optional)"
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "New body (optional)"
+                    },
+                    "state": {
+                        "type": "string",
+                        "enum": ["open", "closed"],
+                        "description": "Issue state"
+                    },
+                    "labels": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of label names (replaces existing labels)"
+                    },
+                    "assignees": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of GitHub usernames (replaces existing assignees)"
+                    },
+                    "milestone": {
+                        "type": "number",
+                        "description": "Milestone number (use null to remove)"
+                    }
+                },
+                "required": ["owner", "repo", "issue_number"]
+            }
+        ),
+        types.Tool(
+            name="update_pull_request",
+            description="Update a pull request (title, body, state, labels, assignees)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {"type": "string"},
+                    "repo": {"type": "string"},
+                    "pr_number": {
+                        "type": "number",
+                        "description": "Pull request number"
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "New title (optional)"
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "New body (optional)"
+                    },
+                    "state": {
+                        "type": "string",
+                        "enum": ["open", "closed"],
+                        "description": "PR state"
+                    },
+                    "base": {
+                        "type": "string",
+                        "description": "Change base branch (optional)"
+                    }
+                },
+                "required": ["owner", "repo", "pr_number"]
+            }
+        ),
+        types.Tool(
+            name="close_issue",
+            description="Close an issue",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {"type": "string"},
+                    "repo": {"type": "string"},
+                    "issue_number": {
+                        "type": "number",
+                        "description": "Issue number"
+                    }
+                },
+                "required": ["owner", "repo", "issue_number"]
+            }
+        ),
+        types.Tool(
+            name="reopen_issue",
+            description="Reopen a closed issue",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {"type": "string"},
+                    "repo": {"type": "string"},
+                    "issue_number": {
+                        "type": "number",
+                        "description": "Issue number"
+                    }
+                },
+                "required": ["owner", "repo", "issue_number"]
+            }
+        ),
+        types.Tool(
+            name="close_pull_request",
+            description="Close a pull request",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {"type": "string"},
+                    "repo": {"type": "string"},
+                    "pr_number": {
+                        "type": "number",
+                        "description": "Pull request number"
+                    }
+                },
+                "required": ["owner", "repo", "pr_number"]
+            }
+        ),
+        types.Tool(
+            name="reopen_pull_request",
+            description="Reopen a closed pull request",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {"type": "string"},
+                    "repo": {"type": "string"},
+                    "pr_number": {
+                        "type": "number",
+                        "description": "Pull request number"
+                    }
+                },
+                "required": ["owner", "repo", "pr_number"]
             }
         )
     ]
@@ -322,24 +590,594 @@ async def handle_call_tool(
                 text=json.dumps(results, indent=2)
             )]
         
+        elif name == "create_issue":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            title = arguments.get("title")
+            body = arguments.get("body", "")
+            labels = arguments.get("labels", [])
+            assignees = arguments.get("assignees", [])
+            milestone = arguments.get("milestone")
+            
+            # Validate inputs
+            if not owner or owner == "YOUR_USERNAME":
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "error": "Invalid owner",
+                        "message": "Please provide a valid repository owner (username or organization).",
+                        "hint": "Replace 'YOUR_USERNAME' with your actual GitHub username or organization name."
+                    }, indent=2)
+                )]
+            
+            if not repo_name or repo_name == "YOUR_REPO":
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "error": "Invalid repository name",
+                        "message": "Please provide a valid repository name.",
+                        "hint": "Replace 'YOUR_REPO' with your actual repository name."
+                    }, indent=2)
+                )]
+            
+            if not title:
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "error": "Missing title",
+                        "message": "Issue title is required."
+                    }, indent=2)
+                )]
+            
+            logger.info(f"Creating issue in {owner}/{repo_name}: {title}")
+            
+            try:
+                repo = github_client.get_repo(f"{owner}/{repo_name}")
+                
+                # Check if issues are enabled
+                if repo.has_issues is False:
+                    return [types.TextContent(
+                        type="text",
+                        text=json.dumps({
+                            "error": "Issues disabled",
+                            "message": f"Issues are disabled for repository '{owner}/{repo_name}'.",
+                            "suggestions": [
+                                "Enable issues in repository settings: Settings → General → Features → Issues",
+                                f"Go to: https://github.com/{owner}/{repo_name}/settings"
+                            ]
+                        }, indent=2)
+                    )]
+                
+                # Create issue
+                # Prepare parameters - PyGithub requires empty lists, not None
+                issue_params = {
+                    "title": title,
+                    "body": body
+                }
+                
+                # Only add optional parameters if they have values
+                if labels:
+                    issue_params["labels"] = labels
+                if assignees:
+                    issue_params["assignees"] = assignees
+                if milestone is not None:
+                    issue_params["milestone"] = milestone
+                
+                issue = repo.create_issue(**issue_params)
+                
+                logger.info(f"Successfully created issue #{issue.number}")
+                
+                result = {
+                    "number": issue.number,
+                    "title": issue.title,
+                    "state": issue.state,
+                    "url": issue.html_url,
+                    "created_at": issue.created_at.isoformat(),
+                    "labels": [label.name for label in issue.labels],
+                    "assignees": [assignee.login for assignee in issue.assignees]
+                }
+                
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps(result, indent=2)
+                )]
+            except GithubException as e:
+                error_msg = str(e) or "Unknown GitHub API error"
+                status = getattr(e, 'status', None)
+                logger.error(f"GitHub API error creating issue (status={status}): {error_msg}")
+                
+                # Extract additional error details if available
+                error_data = {}
+                if hasattr(e, 'data') and e.data:
+                    error_data = e.data if isinstance(e.data, dict) else {}
+                
+                # Provide helpful error messages
+                if status == 404:
+                    return [types.TextContent(
+                        type="text",
+                        text=json.dumps({
+                            "error": "Repository not found",
+                            "message": f"Repository '{owner}/{repo_name}' not found or you don't have access.",
+                            "details": error_msg,
+                            "suggestions": [
+                                f"Check that the repository exists: https://github.com/{owner}/{repo_name}",
+                                "Verify you have write access to the repository",
+                                "Ensure your GitHub token has the 'repo' scope",
+                                "Check that owner and repo names are spelled correctly"
+                            ],
+                            "status": status
+                        }, indent=2)
+                    )]
+                elif status == 403:
+                    return [types.TextContent(
+                        type="text",
+                        text=json.dumps({
+                            "error": "Permission denied",
+                            "message": "You don't have permission to create issues in this repository.",
+                            "details": error_msg,
+                            "suggestions": [
+                                "Verify you have write access to the repository",
+                                "Check that your GitHub token has the 'repo' scope",
+                                "For private repos, ensure your token has access",
+                                "Verify the token hasn't expired or been revoked"
+                            ],
+                            "status": status
+                        }, indent=2)
+                    )]
+                elif status == 422:
+                    return [types.TextContent(
+                        type="text",
+                        text=json.dumps({
+                            "error": "Validation error",
+                            "message": "The request is invalid.",
+                            "details": error_msg,
+                            "suggestions": [
+                                "Check that all labels exist in the repository",
+                                "Verify assignee usernames are correct",
+                                "Ensure milestone number is valid",
+                                "Make sure the repository has issues enabled"
+                            ],
+                            "status": status
+                        }, indent=2)
+                    )]
+                else:
+                    # Generic GitHub API error
+                    return [types.TextContent(
+                        type="text",
+                        text=json.dumps({
+                            "error": "GitHub API error",
+                            "message": error_msg,
+                            "status": status,
+                            "details": error_data if error_data else None,
+                            "suggestions": [
+                                "Check your GitHub token is valid and has correct permissions",
+                                "Verify the repository exists and you have access",
+                                "Check GitHub API status: https://www.githubstatus.com/",
+                                f"Review the error details: {error_msg}"
+                            ]
+                        }, indent=2)
+                    )]
+        
+        elif name == "create_pull_request":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            title = arguments.get("title")
+            body = arguments.get("body", "")
+            head = arguments.get("head")
+            base = arguments.get("base", "main")
+            draft = arguments.get("draft", False)
+            
+            # Validate inputs
+            if not owner or owner == "YOUR_USERNAME":
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "error": "Invalid owner",
+                        "message": "Please provide a valid repository owner (username or organization).",
+                        "hint": "Replace 'YOUR_USERNAME' with your actual GitHub username or organization name."
+                    }, indent=2)
+                )]
+            
+            if not repo_name or repo_name == "YOUR_REPO":
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "error": "Invalid repository name",
+                        "message": "Please provide a valid repository name.",
+                        "hint": "Replace 'YOUR_REPO' with your actual repository name."
+                    }, indent=2)
+                )]
+            
+            if not title:
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "error": "Missing title",
+                        "message": "Pull request title is required."
+                    }, indent=2)
+                )]
+            
+            if not head:
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "error": "Missing head branch",
+                        "message": "Head branch (branch with changes) is required.",
+                        "hint": "Specify the branch containing your changes, e.g., 'feature-branch' or 'fork-owner:branch-name'"
+                    }, indent=2)
+                )]
+            
+            logger.info(f"Creating pull request in {owner}/{repo_name}: {head} -> {base}")
+            
+            try:
+                repo = github_client.get_repo(f"{owner}/{repo_name}")
+                
+                # Create PR
+                pr = repo.create_pull(
+                    title=title,
+                    body=body,
+                    head=head,
+                    base=base,
+                    draft=draft
+                )
+                
+                logger.info(f"Successfully created PR #{pr.number}")
+                
+                result = {
+                    "number": pr.number,
+                    "title": pr.title,
+                    "state": pr.state,
+                    "url": pr.html_url,
+                    "created_at": pr.created_at.isoformat(),
+                    "head": pr.head.ref,
+                    "base": pr.base.ref,
+                    "draft": pr.draft,
+                    "merged": pr.merged
+                }
+                
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps(result, indent=2)
+                )]
+            except GithubException as e:
+                error_msg = str(e)
+                logger.error(f"GitHub API error creating PR: {error_msg}")
+                
+                # Provide helpful error messages
+                if e.status == 404:
+                    return [types.TextContent(
+                        type="text",
+                        text=json.dumps({
+                            "error": "Repository or branch not found",
+                            "message": f"Repository '{owner}/{repo_name}' or branch '{head}' not found.",
+                            "suggestions": [
+                                f"Check that the repository exists: https://github.com/{owner}/{repo_name}",
+                                f"Verify the branch '{head}' exists in the repository",
+                                "For forks, use format: 'fork-owner:branch-name'",
+                                "Ensure you have write access to the repository"
+                            ]
+                        }, indent=2)
+                    )]
+                elif e.status == 403:
+                    return [types.TextContent(
+                        type="text",
+                        text=json.dumps({
+                            "error": "Permission denied",
+                            "message": "You don't have permission to create pull requests in this repository.",
+                            "suggestions": [
+                                "Verify you have write access to the repository",
+                                "Check that your GitHub token has the 'repo' scope",
+                                "For private repos, ensure your token has access"
+                            ]
+                        }, indent=2)
+                    )]
+                elif e.status == 422:
+                    # Check for specific validation errors
+                    if "No commits between" in error_msg or "head" in error_msg.lower():
+                        return [types.TextContent(
+                            type="text",
+                            text=json.dumps({
+                                "error": "Invalid branch configuration",
+                                "message": "Cannot create pull request with these branches.",
+                                "details": error_msg,
+                                "suggestions": [
+                                    f"Ensure branch '{head}' has commits that differ from '{base}'",
+                                    f"Check that branch '{head}' exists",
+                                    f"Verify branch '{base}' exists",
+                                    "Make sure you've pushed commits to the head branch"
+                                ]
+                            }, indent=2)
+                        )]
+                    else:
+                        return [types.TextContent(
+                            type="text",
+                            text=json.dumps({
+                                "error": "Validation error",
+                                "message": "The request is invalid.",
+                                "details": error_msg,
+                                "suggestions": [
+                                    "Check that both branches exist",
+                                    "Ensure there are differences between branches",
+                                    "Verify branch names are correct"
+                                ]
+                            }, indent=2)
+                        )]
+                else:
+                    return [types.TextContent(
+                        type="text",
+                        text=json.dumps({
+                            "error": "GitHub API error",
+                            "message": error_msg,
+                            "status": e.status
+                        }, indent=2)
+                    )]
+        
+        elif name == "add_issue_comment":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            issue_number = arguments.get("issue_number")
+            body = arguments.get("body")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            issue = repo.get_issue(issue_number)
+            
+            comment = issue.create_comment(body)
+            
+            result = {
+                "id": comment.id,
+                "body": comment.body,
+                "user": comment.user.login,
+                "created_at": comment.created_at.isoformat(),
+                "url": comment.html_url
+            }
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+        
+        elif name == "add_pr_comment":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            pr_number = arguments.get("pr_number")
+            body = arguments.get("body")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            pr = repo.get_pull(pr_number)
+            
+            comment = pr.create_issue_comment(body)
+            
+            result = {
+                "id": comment.id,
+                "body": comment.body,
+                "user": comment.user.login,
+                "created_at": comment.created_at.isoformat(),
+                "url": comment.html_url
+            }
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+        
+        elif name == "update_issue":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            issue_number = arguments.get("issue_number")
+            title = arguments.get("title")
+            body = arguments.get("body")
+            state = arguments.get("state")
+            labels = arguments.get("labels")
+            assignees = arguments.get("assignees")
+            milestone = arguments.get("milestone")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            issue = repo.get_issue(issue_number)
+            
+            # Build update parameters
+            update_params = {}
+            if title is not None:
+                update_params["title"] = title
+            if body is not None:
+                update_params["body"] = body
+            if state is not None:
+                update_params["state"] = state
+            if labels is not None:
+                update_params["labels"] = labels
+            if assignees is not None:
+                update_params["assignees"] = assignees
+            if milestone is not None:
+                update_params["milestone"] = milestone
+            
+            # Update issue
+            issue.edit(**update_params)
+            
+            # Refresh to get updated data
+            issue = repo.get_issue(issue_number)
+            
+            result = {
+                "number": issue.number,
+                "title": issue.title,
+                "state": issue.state,
+                "url": issue.html_url,
+                "updated_at": issue.updated_at.isoformat(),
+                "labels": [label.name for label in issue.labels],
+                "assignees": [assignee.login for assignee in issue.assignees]
+            }
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+        
+        elif name == "update_pull_request":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            pr_number = arguments.get("pr_number")
+            title = arguments.get("title")
+            body = arguments.get("body")
+            state = arguments.get("state")
+            base = arguments.get("base")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            pr = repo.get_pull(pr_number)
+            
+            # Build update parameters
+            update_params = {}
+            if title is not None:
+                update_params["title"] = title
+            if body is not None:
+                update_params["body"] = body
+            if state is not None:
+                update_params["state"] = state
+            if base is not None:
+                update_params["base"] = base
+            
+            # Update PR
+            pr.edit(**update_params)
+            
+            # Refresh to get updated data
+            pr = repo.get_pull(pr_number)
+            
+            result = {
+                "number": pr.number,
+                "title": pr.title,
+                "state": pr.state,
+                "url": pr.html_url,
+                "updated_at": pr.updated_at.isoformat(),
+                "head": pr.head.ref,
+                "base": pr.base.ref,
+                "merged": pr.merged
+            }
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+        
+        elif name == "close_issue":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            issue_number = arguments.get("issue_number")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            issue = repo.get_issue(issue_number)
+            issue.edit(state="closed")
+            
+            result = {
+                "number": issue.number,
+                "title": issue.title,
+                "state": "closed",
+                "url": issue.html_url,
+                "closed_at": issue.closed_at.isoformat() if issue.closed_at else None
+            }
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+        
+        elif name == "reopen_issue":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            issue_number = arguments.get("issue_number")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            issue = repo.get_issue(issue_number)
+            issue.edit(state="open")
+            
+            result = {
+                "number": issue.number,
+                "title": issue.title,
+                "state": "open",
+                "url": issue.html_url
+            }
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+        
+        elif name == "close_pull_request":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            pr_number = arguments.get("pr_number")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            pr = repo.get_pull(pr_number)
+            pr.edit(state="closed")
+            
+            result = {
+                "number": pr.number,
+                "title": pr.title,
+                "state": "closed",
+                "url": pr.html_url,
+                "closed_at": pr.closed_at.isoformat() if pr.closed_at else None
+            }
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+        
+        elif name == "reopen_pull_request":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            pr_number = arguments.get("pr_number")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            pr = repo.get_pull(pr_number)
+            pr.edit(state="open")
+            
+            result = {
+                "number": pr.number,
+                "title": pr.title,
+                "state": "open",
+                "url": pr.html_url
+            }
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+        
         else:
             raise ValueError(f"Unknown tool: {name}")
             
     except ValueError as e:
         # Handle missing token error
+        logger.error(f"Configuration error: {str(e)}")
         return [types.TextContent(
             type="text",
-            text=f"Configuration Error: {str(e)}"
+            text=json.dumps({
+                "error": "Configuration Error",
+                "message": str(e),
+                "suggestions": [
+                    "Set GITHUB_TOKEN in your .env file",
+                    "Get a token from: https://github.com/settings/tokens",
+                    "Ensure the token has the 'repo' or 'public_repo' scope"
+                ]
+            }, indent=2)
         )]
     except GithubException as e:
+        logger.error(f"GitHub API error: {str(e)}")
         return [types.TextContent(
             type="text",
-            text=f"GitHub API Error: {str(e)}"
+            text=json.dumps({
+                "error": "GitHub API Error",
+                "message": str(e),
+                "status": e.status if hasattr(e, 'status') else None
+            }, indent=2)
         )]
     except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}", exc_info=True)
         return [types.TextContent(
             type="text",
-            text=f"Error: {str(e)}"
+            text=json.dumps({
+                "error": "Unexpected Error",
+                "message": str(e),
+                "type": type(e).__name__
+            }, indent=2)
         )]
 
 async def main():

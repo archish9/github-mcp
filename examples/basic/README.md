@@ -46,15 +46,15 @@ Contains separate functions for each tool with multiple examples.
 **Usage:**
 ```bash
 # Run all examples
-python examples/individual_examples.py
+python examples/basic/individual_examples.py
 
 # Run specific example
-python examples/individual_examples.py search    # Search repositories
-python examples/individual_examples.py repo      # Repository info
-python examples/individual_examples.py file      # File contents
-python examples/individual_examples.py issues    # List issues
-python examples/individual_examples.py user      # User info
-python examples/individual_examples.py prs       # Pull requests
+python examples/basic/individual_examples.py search    # Search repositories
+python examples/basic/individual_examples.py repo      # Repository info
+python examples/basic/individual_examples.py file      # File contents
+python examples/basic/individual_examples.py issues    # List issues
+python examples/basic/individual_examples.py user      # User info
+python examples/basic/individual_examples.py prs       # Pull requests
 ```
 
 **Examples included:**
@@ -72,7 +72,7 @@ Interactive menu-driven demo where you can test with your own inputs.
 
 **Usage:**
 ```bash
-python examples/interactive_demo.py
+python examples/basic/interactive_demo.py
 ```
 
 **Features:**

@@ -13,7 +13,8 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 # Get project root (parent of examples directory)
-PROJECT_ROOT = Path(__file__).parent.parent.absolute()
+# File is in examples/basic/, so we need to go up 3 levels
+PROJECT_ROOT = Path(__file__).parent.parent.parent.absolute()
 
 # Load environment variables from .env file
 load_dotenv(PROJECT_ROOT / ".env")
