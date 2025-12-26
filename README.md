@@ -68,3 +68,11 @@ Add to your Claude Desktop config:
 - `close_pull_request` - Close a pull request
 - `reopen_pull_request` - Reopen a closed pull request
 
+### Repository Statistics
+- `get_contributor_stats` - Get contributor statistics (commits, additions, deletions per user)
+- `get_code_frequency` - Get weekly additions/deletions over time
+- `get_commit_activity` - Get commit activity by week for the past year
+- `get_language_breakdown` - Get language breakdown by bytes
+- `get_traffic_stats` - Get views, clones, popular paths (requires push access)
+- `get_community_health` - Get community health metrics
+
