@@ -534,6 +534,150 @@ async def handle_list_tools() -> list[types.Tool]:
                 },
                 "required": ["owner", "repo"]
             }
+        ),
+        # Commit History Tools
+        types.Tool(
+            name="list_commits",
+            description="Get list of commits with messages and authors",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner (username or organization)"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    },
+                    "branch": {
+                        "type": "string",
+                        "description": "Branch name (default: default branch)",
+                        "default": None
+                    },
+                    "limit": {
+                        "type": "number",
+                        "description": "Number of commits to return (default: 10, max: 100)",
+                        "default": 10
+                    }
+                },
+                "required": ["owner", "repo"]
+            }
+        ),
+        types.Tool(
+            name="get_commit_details",
+            description="Get detailed information about a specific commit (files changed, additions, deletions, patch)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    },
+                    "sha": {
+                        "type": "string",
+                        "description": "Commit SHA (full or abbreviated)"
+                    },
+                    "include_patch": {
+                        "type": "boolean",
+                        "description": "Include file patches/diffs (default: false)",
+                        "default": False
+                    }
+                },
+                "required": ["owner", "repo", "sha"]
+            }
+        ),
+        types.Tool(
+            name="search_commits",
+            description="Search commits by author, date range, or message",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    },
+                    "author": {
+                        "type": "string",
+                        "description": "Filter by author username or email"
+                    },
+                    "since": {
+                        "type": "string",
+                        "description": "Only commits after this date (ISO 8601 format: YYYY-MM-DD)"
+                    },
+                    "until": {
+                        "type": "string",
+                        "description": "Only commits before this date (ISO 8601 format: YYYY-MM-DD)"
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Only commits containing this file path"
+                    },
+                    "limit": {
+                        "type": "number",
+                        "description": "Number of commits to return (default: 10)",
+                        "default": 10
+                    }
+                },
+                "required": ["owner", "repo"]
+            }
+        ),
+        types.Tool(
+            name="compare_commits",
+            description="Compare two commits, branches, or tags",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    },
+                    "base": {
+                        "type": "string",
+                        "description": "Base branch/commit/tag for comparison"
+                    },
+                    "head": {
+                        "type": "string",
+                        "description": "Head branch/commit/tag to compare against base"
+                    }
+                },
+                "required": ["owner", "repo", "base", "head"]
+            }
+        ),
+        types.Tool(
+            name="get_commit_stats",
+            description="Get commit statistics for a repository (total commits, top authors, activity summary)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    },
+                    "days": {
+                        "type": "number",
+                        "description": "Number of days to analyze (default: 30)",
+                        "default": 30
+                    }
+                },
+                "required": ["owner", "repo"]
+            }
         )
     ]
 
@@ -1526,6 +1670,261 @@ async def handle_call_tool(
                     type="text",
                     text=json.dumps(result, indent=2)
                 )]
+        
+        # Commit History Tools
+        elif name == "list_commits":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            branch = arguments.get("branch")
+            limit = min(arguments.get("limit", 10), 100)
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            
+            # Get commits, optionally filtered by branch
+            if branch:
+                commits = repo.get_commits(sha=branch)
+            else:
+                commits = repo.get_commits()
+            
+            results = []
+            for commit in commits[:limit]:
+                commit_data = {
+                    "sha": commit.sha,
+                    "short_sha": commit.sha[:7],
+                    "message": commit.commit.message.split('\n')[0],  # First line only
+                    "full_message": commit.commit.message,
+                    "author": commit.commit.author.name if commit.commit.author else "Unknown",
+                    "author_email": commit.commit.author.email if commit.commit.author else None,
+                    "author_login": commit.author.login if commit.author else None,
+                    "date": commit.commit.author.date.isoformat() if commit.commit.author else None,
+                    "url": commit.html_url
+                }
+                results.append(commit_data)
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "repository": f"{owner}/{repo_name}",
+                    "branch": branch or repo.default_branch,
+                    "total_returned": len(results),
+                    "commits": results
+                }, indent=2)
+            )]
+        
+        elif name == "get_commit_details":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            sha = arguments.get("sha")
+            include_patch = arguments.get("include_patch", False)
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            commit = repo.get_commit(sha)
+            
+            # Get file changes
+            files = []
+            for f in commit.files:
+                file_data = {
+                    "filename": f.filename,
+                    "status": f.status,  # added, removed, modified, renamed
+                    "additions": f.additions,
+                    "deletions": f.deletions,
+                    "changes": f.changes
+                }
+                if include_patch and f.patch:
+                    file_data["patch"] = f.patch
+                files.append(file_data)
+            
+            result = {
+                "sha": commit.sha,
+                "message": commit.commit.message,
+                "author": {
+                    "name": commit.commit.author.name if commit.commit.author else "Unknown",
+                    "email": commit.commit.author.email if commit.commit.author else None,
+                    "login": commit.author.login if commit.author else None,
+                    "date": commit.commit.author.date.isoformat() if commit.commit.author else None
+                },
+                "committer": {
+                    "name": commit.commit.committer.name if commit.commit.committer else "Unknown",
+                    "email": commit.commit.committer.email if commit.commit.committer else None,
+                    "date": commit.commit.committer.date.isoformat() if commit.commit.committer else None
+                },
+                "stats": {
+                    "total": commit.stats.total,
+                    "additions": commit.stats.additions,
+                    "deletions": commit.stats.deletions
+                },
+                "files_changed": len(files),
+                "files": files,
+                "parents": [p.sha[:7] for p in commit.parents],
+                "url": commit.html_url
+            }
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+        
+        elif name == "search_commits":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            author = arguments.get("author")
+            since_str = arguments.get("since")
+            until_str = arguments.get("until")
+            path = arguments.get("path")
+            limit = min(arguments.get("limit", 10), 100)
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            
+            # Build query parameters
+            query_params = {}
+            
+            if author:
+                query_params["author"] = author
+            if since_str:
+                from datetime import datetime
+                query_params["since"] = datetime.fromisoformat(since_str.replace('Z', '+00:00'))
+            if until_str:
+                from datetime import datetime
+                query_params["until"] = datetime.fromisoformat(until_str.replace('Z', '+00:00'))
+            if path:
+                query_params["path"] = path
+            
+            commits = repo.get_commits(**query_params)
+            
+            results = []
+            for commit in commits[:limit]:
+                results.append({
+                    "sha": commit.sha,
+                    "short_sha": commit.sha[:7],
+                    "message": commit.commit.message.split('\n')[0],
+                    "author": commit.commit.author.name if commit.commit.author else "Unknown",
+                    "author_login": commit.author.login if commit.author else None,
+                    "date": commit.commit.author.date.isoformat() if commit.commit.author else None,
+                    "url": commit.html_url
+                })
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "repository": f"{owner}/{repo_name}",
+                    "filters": {
+                        "author": author,
+                        "since": since_str,
+                        "until": until_str,
+                        "path": path
+                    },
+                    "total_returned": len(results),
+                    "commits": results
+                }, indent=2)
+            )]
+        
+        elif name == "compare_commits":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            base = arguments.get("base")
+            head = arguments.get("head")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            comparison = repo.compare(base, head)
+            
+            # Get commits in comparison
+            commits = []
+            for commit in comparison.commits[:20]:  # Limit to 20 commits
+                commits.append({
+                    "sha": commit.sha[:7],
+                    "message": commit.commit.message.split('\n')[0],
+                    "author": commit.commit.author.name if commit.commit.author else "Unknown",
+                    "date": commit.commit.author.date.isoformat() if commit.commit.author else None
+                })
+            
+            # Get files changed
+            files = []
+            for f in comparison.files[:50]:  # Limit to 50 files
+                files.append({
+                    "filename": f.filename,
+                    "status": f.status,
+                    "additions": f.additions,
+                    "deletions": f.deletions
+                })
+            
+            result = {
+                "repository": f"{owner}/{repo_name}",
+                "base": base,
+                "head": head,
+                "status": comparison.status,  # ahead, behind, diverged, identical
+                "ahead_by": comparison.ahead_by,
+                "behind_by": comparison.behind_by,
+                "total_commits": comparison.total_commits,
+                "commits": commits,
+                "files_changed": len(comparison.files),
+                "files": files,
+                "url": comparison.html_url
+            }
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+        
+        elif name == "get_commit_stats":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            days = arguments.get("days", 30)
+            
+            from datetime import datetime, timedelta
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            since_date = datetime.now() - timedelta(days=days)
+            
+            commits = repo.get_commits(since=since_date)
+            
+            # Aggregate statistics
+            author_stats = {}
+            total_commits = 0
+            commits_by_day = {}
+            
+            for commit in commits:
+                total_commits += 1
+                
+                # Count by author
+                author_name = commit.author.login if commit.author else (
+                    commit.commit.author.name if commit.commit.author else "Unknown"
+                )
+                if author_name not in author_stats:
+                    author_stats[author_name] = {"commits": 0, "additions": 0, "deletions": 0}
+                author_stats[author_name]["commits"] += 1
+                
+                # Count by day
+                if commit.commit.author and commit.commit.author.date:
+                    day_str = commit.commit.author.date.strftime("%Y-%m-%d")
+                    commits_by_day[day_str] = commits_by_day.get(day_str, 0) + 1
+                
+                # Limit to prevent API rate limiting
+                if total_commits >= 500:
+                    break
+            
+            # Sort authors by commit count
+            top_authors = sorted(
+                [{"author": k, **v} for k, v in author_stats.items()],
+                key=lambda x: x["commits"],
+                reverse=True
+            )[:10]
+            
+            result = {
+                "repository": f"{owner}/{repo_name}",
+                "period_days": days,
+                "since": since_date.isoformat(),
+                "total_commits": total_commits,
+                "unique_authors": len(author_stats),
+                "top_authors": top_authors,
+                "commits_by_day": dict(sorted(commits_by_day.items(), reverse=True)[:14]),
+                "avg_commits_per_day": round(total_commits / days, 2) if days > 0 else 0
+            }
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
         
         else:
             raise ValueError(f"Unknown tool: {name}")

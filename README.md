@@ -76,3 +76,9 @@ Add to your Claude Desktop config:
 - `get_traffic_stats` - Get views, clones, popular paths (requires push access)
 - `get_community_health` - Get community health metrics
 
+### Commit History
+- `list_commits` - Get list of commits with messages and authors
+- `get_commit_details` - View specific commit details (files changed, diff)
+- `search_commits` - Search commits by author, date, message
+- `compare_commits` - Compare commits between branches/tags
+- `get_commit_stats` - Get commit statistics for a time period

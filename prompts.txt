@@ -2,12 +2,15 @@ I want to show how to use this MCP , i don't want unit test, i want actual scrip
 So generate the required scripts
 
 
-want a new feature "Generate report" and want have all these tools in my MCP server
-
-generate_channel_report
-generate_video_report
+want a new feature "Commit History" and want to have all these tools in my MCP server
+- Get contributor statistics (who contributed what)
+- Code frequency (additions/deletions over time)
+- Commit activity by time period
+- Language breakdown
+- Traffic statistics (views, clones, popular paths)
+- Community health metrics
 
 once you create tools I want to show how to use these tools, i don't want unit test, i want actual scripts that show how to pass arguments and see response. read file so you follow the structure to create and name these testing scripts. I recommend examples/basic folder for testing scripts, and following the same structure.
-So create a new folder in examples folder generate the required scripts and readme.md files. these folder is exclusive for "Generate report" feature.
+So create a new folder in examples folder generate the required scripts and readme.md files. these folder is exclusive for "Commit History" feature.
 
-please check the current project and follow the current project structure for coding, testing files and readme content.
+please check the current project and follow the current project structure for coding, testing files, and readme content.
