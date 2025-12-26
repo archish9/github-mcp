@@ -82,3 +82,11 @@ Add to your Claude Desktop config:
 - `search_commits` - Search commits by author, date, message
 - `compare_commits` - Compare commits between branches/tags
 - `get_commit_stats` - Get commit statistics for a time period
+
+### Branch Management
+- `list_branches` - List all branches in a repository
+- `create_branch` - Create new branches
+- `delete_branch` - Delete branches
+- `merge_branches` - Merge one branch into another
+- `get_branch_protection` - Get branch protection rules
+- `compare_branches` - Compare two branches

@@ -678,6 +678,156 @@ async def handle_list_tools() -> list[types.Tool]:
                 },
                 "required": ["owner", "repo"]
             }
+        ),
+        # Branch Management Tools
+        types.Tool(
+            name="list_branches",
+            description="List all branches in a repository",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    },
+                    "protected_only": {
+                        "type": "boolean",
+                        "description": "Only list protected branches (default: false)",
+                        "default": False
+                    }
+                },
+                "required": ["owner", "repo"]
+            }
+        ),
+        types.Tool(
+            name="create_branch",
+            description="Create a new branch from an existing branch or commit",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    },
+                    "branch_name": {
+                        "type": "string",
+                        "description": "Name for the new branch"
+                    },
+                    "from_branch": {
+                        "type": "string",
+                        "description": "Source branch to create from (default: default branch)"
+                    }
+                },
+                "required": ["owner", "repo", "branch_name"]
+            }
+        ),
+        types.Tool(
+            name="delete_branch",
+            description="Delete a branch from a repository",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    },
+                    "branch_name": {
+                        "type": "string",
+                        "description": "Name of the branch to delete"
+                    }
+                },
+                "required": ["owner", "repo", "branch_name"]
+            }
+        ),
+        types.Tool(
+            name="merge_branches",
+            description="Merge one branch into another",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    },
+                    "base": {
+                        "type": "string",
+                        "description": "Base branch to merge into"
+                    },
+                    "head": {
+                        "type": "string",
+                        "description": "Branch to merge from"
+                    },
+                    "commit_message": {
+                        "type": "string",
+                        "description": "Commit message for the merge"
+                    }
+                },
+                "required": ["owner", "repo", "base", "head"]
+            }
+        ),
+        types.Tool(
+            name="get_branch_protection",
+            description="Get branch protection rules for a branch",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    },
+                    "branch": {
+                        "type": "string",
+                        "description": "Branch name (default: default branch)"
+                    }
+                },
+                "required": ["owner", "repo"]
+            }
+        ),
+        types.Tool(
+            name="compare_branches",
+            description="Compare two branches to see differences (commits, files changed)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    },
+                    "base": {
+                        "type": "string",
+                        "description": "Base branch for comparison"
+                    },
+                    "head": {
+                        "type": "string",
+                        "description": "Head branch to compare against base"
+                    }
+                },
+                "required": ["owner", "repo", "base", "head"]
+            }
         )
     ]
 
@@ -1919,6 +2069,245 @@ async def handle_call_tool(
                 "top_authors": top_authors,
                 "commits_by_day": dict(sorted(commits_by_day.items(), reverse=True)[:14]),
                 "avg_commits_per_day": round(total_commits / days, 2) if days > 0 else 0
+            }
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+        
+        # Branch Management Tools
+        elif name == "list_branches":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            protected_only = arguments.get("protected_only", False)
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            branches = repo.get_branches()
+            
+            results = []
+            for branch in branches:
+                if protected_only and not branch.protected:
+                    continue
+                
+                branch_data = {
+                    "name": branch.name,
+                    "protected": branch.protected,
+                    "sha": branch.commit.sha[:7],
+                    "commit_message": branch.commit.commit.message.split('\n')[0] if branch.commit.commit else None
+                }
+                results.append(branch_data)
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "repository": f"{owner}/{repo_name}",
+                    "default_branch": repo.default_branch,
+                    "total_branches": len(results),
+                    "branches": results
+                }, indent=2)
+            )]
+        
+        elif name == "create_branch":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            branch_name = arguments.get("branch_name")
+            from_branch = arguments.get("from_branch")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            
+            # Get source branch SHA
+            if from_branch:
+                source = repo.get_branch(from_branch)
+            else:
+                source = repo.get_branch(repo.default_branch)
+            
+            source_sha = source.commit.sha
+            
+            # Create new branch reference
+            ref = repo.create_git_ref(
+                ref=f"refs/heads/{branch_name}",
+                sha=source_sha
+            )
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": True,
+                    "repository": f"{owner}/{repo_name}",
+                    "branch_created": branch_name,
+                    "from_branch": from_branch or repo.default_branch,
+                    "sha": source_sha[:7],
+                    "ref": ref.ref
+                }, indent=2)
+            )]
+        
+        elif name == "delete_branch":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            branch_name = arguments.get("branch_name")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            
+            # Cannot delete default branch
+            if branch_name == repo.default_branch:
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "error": "Cannot delete default branch",
+                        "message": f"The branch '{branch_name}' is the default branch and cannot be deleted.",
+                        "default_branch": repo.default_branch
+                    }, indent=2)
+                )]
+            
+            # Get and delete the branch reference
+            ref = repo.get_git_ref(f"heads/{branch_name}")
+            ref.delete()
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": True,
+                    "repository": f"{owner}/{repo_name}",
+                    "branch_deleted": branch_name
+                }, indent=2)
+            )]
+        
+        elif name == "merge_branches":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            base = arguments.get("base")
+            head = arguments.get("head")
+            commit_message = arguments.get("commit_message", f"Merge {head} into {base}")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            
+            try:
+                merge_result = repo.merge(base, head, commit_message)
+                
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "success": True,
+                        "repository": f"{owner}/{repo_name}",
+                        "base": base,
+                        "head": head,
+                        "merge_commit_sha": merge_result.sha,
+                        "message": commit_message
+                    }, indent=2)
+                )]
+            except GithubException as e:
+                if e.status == 409:
+                    return [types.TextContent(
+                        type="text",
+                        text=json.dumps({
+                            "error": "Merge conflict",
+                            "message": "There are conflicts that must be resolved manually",
+                            "base": base,
+                            "head": head
+                        }, indent=2)
+                    )]
+                raise
+        
+        elif name == "get_branch_protection":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            branch_name = arguments.get("branch")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            
+            if not branch_name:
+                branch_name = repo.default_branch
+            
+            branch = repo.get_branch(branch_name)
+            
+            if not branch.protected:
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "repository": f"{owner}/{repo_name}",
+                        "branch": branch_name,
+                        "protected": False,
+                        "message": "This branch has no protection rules"
+                    }, indent=2)
+                )]
+            
+            try:
+                protection = branch.get_protection()
+                
+                result = {
+                    "repository": f"{owner}/{repo_name}",
+                    "branch": branch_name,
+                    "protected": True,
+                    "enforce_admins": protection.enforce_admins.enabled if protection.enforce_admins else False,
+                    "require_code_owner_reviews": protection.required_pull_request_reviews.require_code_owner_reviews if protection.required_pull_request_reviews else False,
+                    "required_approving_review_count": protection.required_pull_request_reviews.required_approving_review_count if protection.required_pull_request_reviews else 0,
+                    "dismiss_stale_reviews": protection.required_pull_request_reviews.dismiss_stale_reviews if protection.required_pull_request_reviews else False,
+                    "require_linear_history": protection.required_linear_history.enabled if hasattr(protection, 'required_linear_history') and protection.required_linear_history else False,
+                    "allow_force_pushes": protection.allow_force_pushes.enabled if hasattr(protection, 'allow_force_pushes') and protection.allow_force_pushes else False,
+                    "allow_deletions": protection.allow_deletions.enabled if hasattr(protection, 'allow_deletions') and protection.allow_deletions else False
+                }
+                
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps(result, indent=2)
+                )]
+            except GithubException as e:
+                if e.status == 404:
+                    return [types.TextContent(
+                        type="text",
+                        text=json.dumps({
+                            "repository": f"{owner}/{repo_name}",
+                            "branch": branch_name,
+                            "protected": branch.protected,
+                            "message": "Protection rules could not be retrieved (may require admin access)"
+                        }, indent=2)
+                    )]
+                raise
+        
+        elif name == "compare_branches":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            base = arguments.get("base")
+            head = arguments.get("head")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            comparison = repo.compare(base, head)
+            
+            # Get commits in comparison
+            commits = []
+            for commit in comparison.commits[:20]:
+                commits.append({
+                    "sha": commit.sha[:7],
+                    "message": commit.commit.message.split('\n')[0],
+                    "author": commit.commit.author.name if commit.commit.author else "Unknown",
+                    "date": commit.commit.author.date.isoformat() if commit.commit.author else None
+                })
+            
+            # Get files changed
+            files = []
+            for f in comparison.files[:30]:
+                files.append({
+                    "filename": f.filename,
+                    "status": f.status,
+                    "additions": f.additions,
+                    "deletions": f.deletions
+                })
+            
+            result = {
+                "repository": f"{owner}/{repo_name}",
+                "base": base,
+                "head": head,
+                "status": comparison.status,
+                "ahead_by": comparison.ahead_by,
+                "behind_by": comparison.behind_by,
+                "total_commits": comparison.total_commits,
+                "commits": commits,
+                "files_changed": len(comparison.files),
+                "additions": sum(f.additions for f in comparison.files),
+                "deletions": sum(f.deletions for f in comparison.files),
+                "files": files,
+                "url": comparison.html_url
             }
             
             return [types.TextContent(
