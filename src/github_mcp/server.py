@@ -420,6 +420,120 @@ async def handle_list_tools() -> list[types.Tool]:
                 },
                 "required": ["owner", "repo", "pr_number"]
             }
+        ),
+        # Repository Statistics Tools
+        types.Tool(
+            name="get_contributor_stats",
+            description="Get contributor statistics for a repository (commits, additions, deletions per user)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner (username or organization)"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    },
+                    "limit": {
+                        "type": "number",
+                        "description": "Number of contributors to return (default: 10)",
+                        "default": 10
+                    }
+                },
+                "required": ["owner", "repo"]
+            }
+        ),
+        types.Tool(
+            name="get_code_frequency",
+            description="Get weekly code frequency statistics (additions and deletions over time)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    }
+                },
+                "required": ["owner", "repo"]
+            }
+        ),
+        types.Tool(
+            name="get_commit_activity",
+            description="Get commit activity for the past year (weekly commit counts)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    }
+                },
+                "required": ["owner", "repo"]
+            }
+        ),
+        types.Tool(
+            name="get_language_breakdown",
+            description="Get language breakdown for a repository (bytes per language)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    }
+                },
+                "required": ["owner", "repo"]
+            }
+        ),
+        types.Tool(
+            name="get_traffic_stats",
+            description="Get traffic statistics (views, clones, popular paths). Requires push access to the repository.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    }
+                },
+                "required": ["owner", "repo"]
+            }
+        ),
+        types.Tool(
+            name="get_community_health",
+            description="Get community health metrics for a repository (code of conduct, contributing guide, issue templates, etc.)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "Repository owner"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository name"
+                    }
+                },
+                "required": ["owner", "repo"]
+            }
         )
     ]
 
@@ -1140,6 +1254,278 @@ async def handle_call_tool(
                 type="text",
                 text=json.dumps(result, indent=2)
             )]
+        
+        # Repository Statistics Tools
+        elif name == "get_contributor_stats":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            limit = min(arguments.get("limit", 10), 100)
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            stats = repo.get_stats_contributors()
+            
+            # Stats may be None if GitHub is calculating them
+            if stats is None:
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "message": "Statistics are being calculated by GitHub. Please try again in a few seconds.",
+                        "status": "pending"
+                    }, indent=2)
+                )]
+            
+            results = []
+            # Sort by total commits (descending) and limit
+            sorted_stats = sorted(stats, key=lambda x: x.total, reverse=True)[:limit]
+            
+            for contributor in sorted_stats:
+                total_additions = sum(week.a for week in contributor.weeks)
+                total_deletions = sum(week.d for week in contributor.weeks)
+                
+                results.append({
+                    "author": contributor.author.login if contributor.author else "Unknown",
+                    "total_commits": contributor.total,
+                    "total_additions": total_additions,
+                    "total_deletions": total_deletions,
+                    "weeks_active": len([w for w in contributor.weeks if w.c > 0])
+                })
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "repository": f"{owner}/{repo_name}",
+                    "total_contributors": len(stats),
+                    "showing": len(results),
+                    "contributors": results
+                }, indent=2)
+            )]
+        
+        elif name == "get_code_frequency":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            stats = repo.get_stats_code_frequency()
+            
+            # Stats may be None if GitHub is calculating them
+            if stats is None:
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "message": "Statistics are being calculated by GitHub. Please try again in a few seconds.",
+                        "status": "pending"
+                    }, indent=2)
+                )]
+            
+            # Get last 12 weeks for summary
+            from datetime import datetime
+            results = []
+            for week in stats[-12:]:
+                results.append({
+                    "week_start": datetime.fromtimestamp(week.week).isoformat(),
+                    "additions": week.additions,
+                    "deletions": week.deletions
+                })
+            
+            total_additions = sum(w.additions for w in stats)
+            total_deletions = sum(w.deletions for w in stats)
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "repository": f"{owner}/{repo_name}",
+                    "total_additions": total_additions,
+                    "total_deletions": total_deletions,
+                    "weeks_tracked": len(stats),
+                    "last_12_weeks": results
+                }, indent=2)
+            )]
+        
+        elif name == "get_commit_activity":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            stats = repo.get_stats_commit_activity()
+            
+            # Stats may be None if GitHub is calculating them
+            if stats is None:
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "message": "Statistics are being calculated by GitHub. Please try again in a few seconds.",
+                        "status": "pending"
+                    }, indent=2)
+                )]
+            
+            from datetime import datetime
+            results = []
+            for week in stats[-12:]:  # Last 12 weeks
+                results.append({
+                    "week_start": datetime.fromtimestamp(week.week).isoformat(),
+                    "total_commits": week.total,
+                    "days": week.days  # List of commits per day (Sun-Sat)
+                })
+            
+            total_commits = sum(w.total for w in stats)
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "repository": f"{owner}/{repo_name}",
+                    "total_commits_year": total_commits,
+                    "weeks_tracked": len(stats),
+                    "last_12_weeks": results
+                }, indent=2)
+            )]
+        
+        elif name == "get_language_breakdown":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            languages = repo.get_languages()
+            
+            # Calculate percentages
+            total_bytes = sum(languages.values())
+            results = []
+            
+            for lang, bytes_count in sorted(languages.items(), key=lambda x: x[1], reverse=True):
+                percentage = (bytes_count / total_bytes * 100) if total_bytes > 0 else 0
+                results.append({
+                    "language": lang,
+                    "bytes": bytes_count,
+                    "percentage": round(percentage, 2)
+                })
+            
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "repository": f"{owner}/{repo_name}",
+                    "total_bytes": total_bytes,
+                    "languages": results
+                }, indent=2)
+            )]
+        
+        elif name == "get_traffic_stats":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            
+            try:
+                repo = github_client.get_repo(f"{owner}/{repo_name}")
+                
+                # Get views
+                views = repo.get_views_traffic()
+                
+                # Get clones
+                clones = repo.get_clones_traffic()
+                
+                # Get top paths
+                top_paths = repo.get_top_paths()
+                
+                # Get top referrers
+                top_referrers = repo.get_top_referrers()
+                
+                paths_list = [{"path": p.path, "title": p.title, "views": p.count, "unique_visitors": p.uniques} for p in top_paths]
+                referrers_list = [{"referrer": r.referrer, "views": r.count, "unique_visitors": r.uniques} for r in top_referrers]
+                
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "repository": f"{owner}/{repo_name}",
+                        "views": {
+                            "total": views.get("count", 0),
+                            "unique": views.get("uniques", 0)
+                        },
+                        "clones": {
+                            "total": clones.get("count", 0),
+                            "unique": clones.get("uniques", 0)
+                        },
+                        "top_paths": paths_list[:10],
+                        "top_referrers": referrers_list[:10]
+                    }, indent=2)
+                )]
+            except GithubException as e:
+                if e.status == 403:
+                    return [types.TextContent(
+                        type="text",
+                        text=json.dumps({
+                            "error": "Access denied",
+                            "message": "Traffic statistics require push access to the repository.",
+                            "suggestions": [
+                                "Ensure you have push (write) access to this repository",
+                                "Use your own repository for traffic statistics",
+                                "Check that your token has the 'repo' scope"
+                            ]
+                        }, indent=2)
+                    )]
+                raise
+        
+        elif name == "get_community_health":
+            owner = arguments.get("owner")
+            repo_name = arguments.get("repo")
+            
+            repo = github_client.get_repo(f"{owner}/{repo_name}")
+            
+            # Try to get community profile
+            try:
+                profile = repo.get_community_profile()
+                
+                # Extract file info
+                def get_file_url(file_info):
+                    if file_info and hasattr(file_info, 'url'):
+                        return file_info.url
+                    elif file_info and isinstance(file_info, dict):
+                        return file_info.get('url') or file_info.get('html_url')
+                    return None
+                
+                files = profile.get("files", {})
+                
+                result = {
+                    "repository": f"{owner}/{repo_name}",
+                    "health_percentage": profile.get("health_percentage", 0),
+                    "description": profile.get("description"),
+                    "documentation": profile.get("documentation"),
+                    "files": {
+                        "code_of_conduct": get_file_url(files.get("code_of_conduct")),
+                        "contributing": get_file_url(files.get("contributing")),
+                        "issue_template": get_file_url(files.get("issue_template")),
+                        "pull_request_template": get_file_url(files.get("pull_request_template")),
+                        "license": get_file_url(files.get("license")),
+                        "readme": get_file_url(files.get("readme"))
+                    },
+                    "updated_at": profile.get("updated_at")
+                }
+                
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps(result, indent=2)
+                )]
+            except (GithubException, AttributeError) as e:
+                # Fallback: gather basic community info manually
+                # This handles both API errors and cases where get_community_profile isn't available
+                result = {
+                    "repository": f"{owner}/{repo_name}",
+                    "description": repo.description,
+                    "has_issues": repo.has_issues,
+                    "has_wiki": repo.has_wiki,
+                    "has_downloads": repo.has_downloads,
+                    "has_projects": repo.has_projects,
+                    "license": repo.license.name if repo.license else None,
+                    "homepage": repo.homepage,
+                    "default_branch": repo.default_branch,
+                    "open_issues_count": repo.open_issues_count,
+                    "stargazers_count": repo.stargazers_count,
+                    "watchers_count": repo.watchers_count,
+                    "forks_count": repo.forks_count,
+                    "topics": repo.get_topics(),
+                    "url": repo.html_url
+                }
+                
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps(result, indent=2)
+                )]
         
         else:
             raise ValueError(f"Unknown tool: {name}")
